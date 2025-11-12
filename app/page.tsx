@@ -1,153 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import ChatPanel, { ChatMessage } from "../components/ChatPanel";
+import { FormEvent, useMemo, useState } from "react";
+import Avatar2D from "../components/Avatar2D";
+import ChatPanel from "../components/ChatPanel";
+import { useElevenLabsConversation } from "../hooks/useElevenLabsConversation";
+
+const STATUS_COPY: Record<string, string> = {
+  idle: "Inactivo",
+  connecting: "Conectando...",
+  connected: "En conversación",
+  error: "Error",
+};
 
 export default function HomePage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const {
+    messages,
+    status,
+    error,
+    isMicrophoneActive,
+    mouthOpenAmount,
+    startConversation,
+    stopConversation,
+    sendTextMessage,
+  } = useElevenLabsConversation();
 
-  const startConversation = useCallback(() => {
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    // TODO: Reemplaza la URL con el endpoint oficial de ElevenLabs Agents.
-    // TODO: Si empleas el SDK más reciente de ElevenLabs, inicialízalo aquí y utiliza su helper para obtener la URL del agente.
-    const ws = new WebSocket("wss://example-elevenlabs-endpoint");
-
-    ws.onopen = () => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", text: "Conexión establecida. ¡Listo para conversar!" },
-      ]);
-
-      // TODO: Envía aquí la petición inicial o mensaje de arranque hacia el agente de ElevenLabs.
-    };
-
-    ws.onmessage = (event) => {
-      // TODO: Procesa la estructura real que responde ElevenLabs (JSON, binario, etc.).
-      const incomingText = typeof event.data === "string" ? event.data : "[Respuesta binaria recibida]";
-
-      setMessages((prev) => [...prev, { role: "agent", text: incomingText }]);
-
-      // TODO: Utiliza aquí los métodos de TalkingHead para reproducir audio:
-      // talkingHeadInstance.streamStart(...)
-      // talkingHeadInstance.streamAudio(...)
-      // talkingHeadInstance.streamNotifyEnd(...)
-      // talkingHeadInstance.streamStop()
-    };
-
-    ws.onerror = () => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "agent",
-          text: "Ocurrió un error con la conexión del WebSocket.",
-        },
-      ]);
-    };
-
-    ws.onclose = () => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", text: "La conversación se ha cerrado." },
-      ]);
-      setSocket(null);
-    };
-
-    setSocket(ws);
-  }, [socket]);
-
-  const stopConversation = useCallback(() => {
-    if (!socket) {
-      return;
-    }
-
-    // TODO: Antes de cerrar la conexión, envía cualquier mensaje final requerido por ElevenLabs.
-    socket.close();
-  }, [socket]);
-
-  useEffect(() => {
-    return () => {
-      socket?.close();
-    };
-  }, [socket]);
-
-  useEffect(() => {
-    let talkingHeadInstance: unknown;
-
-    const mountTalkingHead = async () => {
-      const container = document.getElementById("avatar-container");
-      if (!container) {
-        return;
-      }
-
-      // TODO: Reemplaza este import dinámico con la ruta correcta a tu módulo TalkingHead.
-      // const { TalkingHead } = await import("../modules/talkinghead.mjs");
-      // talkingHeadInstance = new TalkingHead({ canvas: container });
-      // TODO: Configura aquí cualquier inicialización necesaria para TalkingHead.
-    };
-
-    mountTalkingHead();
-
-    return () => {
-      // TODO: Realiza aquí la limpieza de la instancia de TalkingHead si la librería lo requiere.
-      if (talkingHeadInstance && typeof (talkingHeadInstance as { destroy?: () => void }).destroy === "function") {
-        (talkingHeadInstance as { destroy: () => void }).destroy();
-      }
-    };
-  }, []);
-
-  const handleSendMessage = useCallback(
-    (text: string) => {
-      if (!text.trim()) {
-        return;
-      }
-
-      const outgoingMessage: ChatMessage = { role: "user", text };
-      setMessages((prev) => [...prev, outgoingMessage]);
-
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        // TODO: Ajusta la estructura de payload según lo que requiera ElevenLabs Agents.
-        socket.send(JSON.stringify({ type: "user_input", text }));
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "agent",
-            text: "No hay una conexión activa. Inicia una conversación antes de enviar mensajes.",
-          },
-        ]);
-      }
-
-      // TODO: Si necesitas enviar audio en lugar de texto, captura el stream y envíalo aquí.
-    },
-    [socket]
-  );
-
-  const actionButtons = useMemo(
-    () => (
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <button
-          onClick={startConversation}
-          className="flex-1 rounded-lg bg-indigo-500 px-4 py-2 font-semibold text-white shadow hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        >
-          Iniciar conversación
-        </button>
-        <button
-          onClick={stopConversation}
-          className="flex-1 rounded-lg bg-rose-500 px-4 py-2 font-semibold text-white shadow hover:bg-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-300"
-        >
-          Detener conversación
-        </button>
-      </div>
-    ),
-    [startConversation, stopConversation]
-  );
+  const statusLabel = useMemo(() => STATUS_COPY[status] ?? status, [status]);
+  const isConnected = status === "connected";
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white">
+    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black text-white">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-12 lg:flex-row">
         <section className="flex-1 space-y-6">
           <header className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
@@ -155,22 +36,32 @@ export default function HomePage() {
               Talking Head + ElevenLabs Demo
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-gray-300 md:text-base">
-              Interfaz base para experimentar con la integración de ElevenLabs Agents y un avatar 3D impulsado por
-              TalkingHead. Completa los TODO marcados en el código para conectar tus servicios reales.
+              Demostración completa de una experiencia conversacional en tiempo real usando ElevenLabs Agents y un avatar 2D
+              sincronizado por energía de audio. Configura tus credenciales en variables de entorno y presiona “Iniciar
+              conversación” para comenzar.
             </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-gray-300">
+              <StatusBadge status={statusLabel} tone={status} />
+              <MicrophoneBadge active={isMicrophoneActive} />
+            </div>
+            {error ? (
+              <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/20 px-4 py-3 text-sm text-rose-100">
+                {error}
+              </p>
+            ) : null}
           </header>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
             <h2 className="mb-4 text-xl font-semibold">Avatar en vivo</h2>
             <div
               id="avatar-container"
-              className="aspect-video w-full overflow-hidden rounded-xl border border-white/5 bg-black/60"
+              className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-black/60"
             >
-              {/* TODO: TalkingHead renderizará aquí el avatar 3D. */}
+              <Avatar2D mouthOpenAmount={mouthOpenAmount} speaking={isConnected} />
             </div>
             <p className="mt-4 text-sm text-gray-400">
-              Este contenedor se conectará con la instancia de <code>TalkingHead</code> para mostrar animaciones sincronizadas con
-              las respuestas de audio del agente.
+              Este avatar 2D responde en tiempo real a la energía del audio recibido del agente. Sustituye el componente por tu
+              pipeline de TalkingHead si prefieres un modelo 3D.
             </p>
           </div>
         </section>
@@ -178,16 +69,44 @@ export default function HomePage() {
         <aside className="flex w-full max-w-xl flex-col gap-6 lg:w-96">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl backdrop-blur">
             <h2 className="mb-4 text-xl font-semibold">Controles</h2>
-            {actionButtons}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <button
+                onClick={startConversation}
+                className="flex-1 rounded-lg bg-indigo-500 px-4 py-2 font-semibold text-white shadow hover:bg-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isConnected || status === "connecting"}
+              >
+                {status === "connecting" ? "Conectando..." : "Iniciar conversación"}
+              </button>
+              <button
+                onClick={stopConversation}
+                className="flex-1 rounded-lg bg-rose-500 px-4 py-2 font-semibold text-white shadow hover:bg-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={status === "idle"}
+              >
+                Detener conversación
+              </button>
+            </div>
             <div className="mt-6">
               <label className="mb-2 block text-sm font-medium text-gray-300" htmlFor="quick-message">
-                Enviar mensaje rápido
+                Enviar mensaje rápido (texto)
               </label>
-              <QuickMessageForm onSend={handleSendMessage} />
+              <QuickMessageForm onSend={sendTextMessage} disabled={!isConnected} />
+            </div>
+            <div className="mt-6 space-y-2 text-xs text-gray-400">
+              <p>
+                Variables necesarias:
+                <code className="ml-2 rounded bg-black/40 px-2 py-1 text-[11px]">NEXT_PUBLIC_AGENT_WS_URL</code>
+                {" y "}
+                <code className="ml-1 rounded bg-black/40 px-2 py-1 text-[11px]">NEXT_PUBLIC_AGENT_ID</code>
+                .
+              </p>
+              <p>
+                La URL debe apuntar a tu proxy WebSocket que firme la conexión con ElevenLabs usando tu
+                <code className="mx-1">xi-api-key</code>.
+              </p>
             </div>
           </div>
 
-          <div className="h-[420px]">
+          <div className="h-[460px]">
             <ChatPanel messages={messages} />
           </div>
         </aside>
@@ -198,34 +117,91 @@ export default function HomePage() {
 
 interface QuickMessageFormProps {
   onSend: (text: string) => void;
+  disabled?: boolean;
 }
 
-const QuickMessageForm = ({ onSend }: QuickMessageFormProps) => {
-  const [text, setText] = useState("");
+const QuickMessageForm = ({ onSend, disabled }: QuickMessageFormProps) => {
+  const [value, setValue] = useState("");
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!value.trim()) {
+      return;
+    }
+    onSend(value.trim());
+    setValue("");
+  };
 
   return (
-    <form
-      className="flex flex-col gap-3 sm:flex-row"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSend(text);
-        setText("");
-      }}
-    >
+    <form className="flex flex-col gap-3 sm:flex-row" onSubmit={handleSubmit}>
       <input
         id="quick-message"
         type="text"
-        placeholder="Escribe algo..."
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        className="flex-1 rounded-lg border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder:text-gray-500 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        placeholder={disabled ? "Conecta para enviar mensajes" : "Escribe algo..."}
+        disabled={disabled}
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className="flex-1 rounded-lg border border-white/10 bg-black/50 px-4 py-2 text-sm text-white placeholder:text-gray-500 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
       />
       <button
         type="submit"
-        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+        disabled={disabled}
+        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Enviar
       </button>
     </form>
+  );
+};
+
+interface StatusBadgeProps {
+  status: string;
+  tone: string;
+}
+
+const StatusBadge = ({ status, tone }: StatusBadgeProps) => {
+  const toneStyles: Record<string, string> = {
+    idle: "bg-gray-500/20 text-gray-200 border-gray-500/40",
+    connecting: "bg-amber-500/20 text-amber-100 border-amber-500/40",
+    connected: "bg-emerald-500/20 text-emerald-100 border-emerald-500/40",
+    error: "bg-rose-500/20 text-rose-100 border-rose-500/40",
+  };
+
+  const style = toneStyles[tone] ?? toneStyles.idle;
+
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${style}`}>
+      <span className="h-2 w-2 rounded-full bg-current" />
+      {status}
+    </span>
+  );
+};
+
+interface MicrophoneBadgeProps {
+  active: boolean;
+}
+
+const MicrophoneBadge = ({ active }: MicrophoneBadgeProps) => {
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+        active
+          ? "border-sky-500/40 bg-sky-500/20 text-sky-100"
+          : "border-gray-600/40 bg-gray-600/10 text-gray-300"
+      }`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <path
+          d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 0 1 2 0 7 7 0 0 1-6 6.93V21a1 1 0 0 1-2 0v-2.07A7 7 0 0 1 5 12a1 1 0 0 1 2 0 5 5 0 0 0 10 0Z"
+          fill="currentColor"
+        />
+      </svg>
+      {active ? "Micrófono activo" : "Micrófono inactivo"}
+    </span>
   );
 };
