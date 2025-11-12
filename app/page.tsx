@@ -1,9 +1,19 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Avatar2D from "../components/Avatar2D";
 import ChatPanel from "../components/ChatPanel";
 import { useElevenLabsConversation } from "../hooks/useElevenLabsConversation";
+
+type TalkingHeadInstance = {
+  init?: () => void;
+  attachTo?: (element: HTMLElement | null) => void;
+  streamStart?: () => void;
+  streamAudio?: (frame: Float32Array | Int16Array | Uint8Array) => void;
+  streamNotifyEnd?: () => void;
+  streamStop?: () => void;
+  dispose?: () => void;
+};
 
 const STATUS_COPY: Record<string, string> = {
   idle: "Inactivo",
@@ -13,6 +23,25 @@ const STATUS_COPY: Record<string, string> = {
 };
 
 export default function HomePage() {
+  const talkingHeadMountRef = useRef<HTMLDivElement | null>(null);
+  const talkingHeadRef = useRef<TalkingHeadInstance | null>(null);
+  const [talkingHeadReady, setTalkingHeadReady] = useState(false);
+
+  const conversationOptions = useMemo(
+    () => ({
+      onAgentAudioFrame: (frame: Float32Array) => {
+        talkingHeadRef.current?.streamAudio?.(frame);
+      },
+      onConversationStarted: () => {
+        talkingHeadRef.current?.streamStart?.();
+      },
+      onConversationStopped: () => {
+        talkingHeadRef.current?.streamStop?.();
+      },
+    }),
+    [],
+  );
+
   const {
     messages,
     status,
@@ -22,7 +51,60 @@ export default function HomePage() {
     startConversation,
     stopConversation,
     sendTextMessage,
-  } = useElevenLabsConversation();
+  } = useElevenLabsConversation(conversationOptions);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const mountTalkingHead = async () => {
+      if (!talkingHeadMountRef.current) {
+        return;
+      }
+
+      try {
+        const module = await import("../modules/talkinghead.mjs");
+        if (!isMounted) {
+          return;
+        }
+        const TalkingHead = module?.TalkingHead ?? module?.default;
+        if (!TalkingHead) {
+          console.warn("No se encontró la clase TalkingHead en el módulo proporcionado.");
+          return;
+        }
+        const instance = new TalkingHead({ mount: talkingHeadMountRef.current });
+        instance.init?.();
+        talkingHeadRef.current = instance;
+        setTalkingHeadReady(true);
+      } catch (setupError) {
+        console.warn("No se pudo inicializar TalkingHead. Se utilizará el avatar 2D por defecto.", setupError);
+      }
+    };
+
+    mountTalkingHead();
+
+    return () => {
+      isMounted = false;
+      if (talkingHeadRef.current?.dispose) {
+        talkingHeadRef.current.dispose();
+      }
+      talkingHeadRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const talkingHead = talkingHeadRef.current;
+    if (!talkingHead) {
+      return;
+    }
+
+    if (status === "connected") {
+      talkingHead.streamStart?.();
+    }
+
+    if (status === "idle") {
+      talkingHead.streamStop?.();
+    }
+  }, [status]);
 
   const statusLabel = useMemo(() => STATUS_COPY[status] ?? status, [status]);
   const isConnected = status === "connected";
@@ -55,9 +137,14 @@ export default function HomePage() {
             <h2 className="mb-4 text-xl font-semibold">Avatar en vivo</h2>
             <div
               id="avatar-container"
-              className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-black/60"
+              className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl border border-white/5 bg-black/60"
             >
-              <Avatar2D mouthOpenAmount={mouthOpenAmount} speaking={isConnected} />
+              <div ref={talkingHeadMountRef} className="absolute inset-0" />
+              {!talkingHeadReady ? (
+                <div className="relative z-10 h-full w-full">
+                  <Avatar2D mouthOpenAmount={mouthOpenAmount} speaking={isConnected} />
+                </div>
+              ) : null}
             </div>
             <p className="mt-4 text-sm text-gray-400">
               Este avatar 2D responde en tiempo real a la energía del audio recibido del agente. Sustituye el componente por tu

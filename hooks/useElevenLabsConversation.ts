@@ -29,7 +29,15 @@ const CLOSE_EVENTS = [
   WebSocket.CLOSED,
 ];
 
-export function useElevenLabsConversation(): UseElevenLabsConversationResult {
+export interface UseElevenLabsConversationOptions {
+  onAgentAudioFrame?: (frame: Float32Array) => void;
+  onConversationStarted?: () => void;
+  onConversationStopped?: () => void;
+}
+
+export function useElevenLabsConversation(
+  options?: UseElevenLabsConversationOptions,
+): UseElevenLabsConversationResult {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<ConversationStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +54,24 @@ export function useElevenLabsConversation(): UseElevenLabsConversationResult {
 
   const agentUrl = useMemo(() => process.env.NEXT_PUBLIC_AGENT_WS_URL ?? "", []);
   const agentId = useMemo(() => process.env.NEXT_PUBLIC_AGENT_ID ?? "", []);
+
+  const onAgentAudioFrameRef = useRef<((frame: Float32Array) => void) | undefined>(
+    options?.onAgentAudioFrame,
+  );
+  const onConversationStartedRef = useRef<(() => void) | undefined>(options?.onConversationStarted);
+  const onConversationStoppedRef = useRef<(() => void) | undefined>(options?.onConversationStopped);
+
+  useEffect(() => {
+    onAgentAudioFrameRef.current = options?.onAgentAudioFrame;
+  }, [options?.onAgentAudioFrame]);
+
+  useEffect(() => {
+    onConversationStartedRef.current = options?.onConversationStarted;
+  }, [options?.onConversationStarted]);
+
+  useEffect(() => {
+    onConversationStoppedRef.current = options?.onConversationStopped;
+  }, [options?.onConversationStopped]);
 
   const resetAudioPipeline = useCallback(() => {
     if (processorRef.current) {
@@ -79,6 +105,7 @@ export function useElevenLabsConversation(): UseElevenLabsConversationResult {
   }, []);
 
   const handleAudioFrame = useCallback((frame: Float32Array) => {
+    onAgentAudioFrameRef.current?.(frame);
     const rms = computeRms(frame);
     const momentum = 0.2;
     const previous = rmsDecayRef.current;
@@ -92,6 +119,7 @@ export function useElevenLabsConversation(): UseElevenLabsConversationResult {
     wsRef.current?.close();
     wsRef.current = null;
     resetAudioPipeline();
+    onConversationStoppedRef.current?.();
   }, [resetAudioPipeline]);
 
   const sendTextMessage = useCallback(
@@ -275,6 +303,7 @@ export function useElevenLabsConversation(): UseElevenLabsConversationResult {
     ws.addEventListener("open", async () => {
       setStatus("connected");
       appendMessage({ role: "agent", text: "Conexión establecida. Estoy escuchando." });
+      onConversationStartedRef.current?.();
 
       const initPayload = {
         type: "conversation_initiation_client_data",
@@ -307,6 +336,7 @@ export function useElevenLabsConversation(): UseElevenLabsConversationResult {
       appendMessage({ role: "agent", text: "La conversación se ha cerrado." });
       setStatus("idle");
       resetAudioPipeline();
+      onConversationStoppedRef.current?.();
     });
   }, [agentId, agentUrl, appendMessage, handleIncomingMessage, prepareAudioPipeline, resetAudioPipeline]);
 

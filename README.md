@@ -91,9 +91,10 @@ Luego apunta `NEXT_PUBLIC_AGENT_WS_URL` a `ws://localhost:3001?agent_id=tu-agent
 
 - `app/page.tsx`: layout principal, controles, badges de estado y montaje del avatar.
 - `hooks/useElevenLabsConversation.ts`: orquesta el WebSocket, captura de micrófono, reproducción de audio y actualización de transcripciones.
-- `components/Avatar2D.tsx`: avatar SVG animado en base al nivel RMS del audio recibido.
+- `components/Avatar2D.tsx`: avatar SVG animado en base al nivel RMS del audio recibido (fallback si TalkingHead no está disponible).
 - `components/ChatPanel.tsx`: historial de mensajes con auto-scroll.
 - `lib/audio/*`: utilidades para convertir audio (`Float32Array → PCM16`), codificar en base64 y reproducir mediante `AudioContext`.
+- `modules/talkinghead.mjs`: implementación mínima autocontenida para que puedas visualizar un TalkingHead 2D directamente en el navegador y un punto de partida para integrar tu motor real.
 
 ## Personalización y siguientes pasos
 
